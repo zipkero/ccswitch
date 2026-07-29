@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/zipkero/ccswitch/internal/cli"
+	"github.com/zipkero/ccswitch/internal/launch"
 	"github.com/zipkero/ccswitch/internal/profile"
 )
 
@@ -39,6 +40,11 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, interactive b
 		Stdout:      stdout,
 		Stderr:      stderr,
 		Interactive: interactive,
+		// 실제 구현·플랫폼 값·부모 환경은 여기서 한 번 채운다. os.Environ()을 CLI 경계 안에서
+		// 부르면 자식 환경 계산을 테스트가 프로세스 전역 환경 없이 구성할 수 없다.
+		Platform: launch.NewPlatform(),
+		BaseEnv:  os.Environ(),
+		Launcher: launch.OSLauncher{},
 	})
 	root.SetArgs(args)
 	err = root.Execute()

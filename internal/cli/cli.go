@@ -7,6 +7,7 @@ import (
 	"io"
 
 	"github.com/spf13/cobra"
+	"github.com/zipkero/ccswitch/internal/launch"
 	"github.com/zipkero/ccswitch/internal/profile"
 )
 
@@ -16,12 +17,20 @@ import (
 // Interactive는 표준 입력이 실제 터미널인지를 나타낸다. 이 경계가 os.Stdin을 직접 들여다보면
 // 승인·거부·비대화형 세 갈래를 테스트로 구성할 수 없으므로, 진입점이 판정한 값을 그대로
 // 받는다(D13).
+//
+// Platform·BaseEnv·Launcher도 같은 성격이다 — 실행 환경에서 온 값을 진입점이 한 번 만들어
+// 값으로 넘기고, 테스트가 같은 자리에 자기 값을 넣는다. BaseEnv를 값으로 받기 때문에 자식
+// 환경 계산이 프로세스 전역 환경변수를 건드리지 않고 검증된다.
 type Deps struct {
 	Layout      profile.Layout
 	Stdin       io.Reader
 	Stdout      io.Writer
 	Stderr      io.Writer
 	Interactive bool
+
+	Platform launch.Platform
+	BaseEnv  []string
+	Launcher launch.Launcher
 }
 
 // NewRootCommand는 Deps를 값으로 받아 커맨드 트리를 구성해 돌려준다.
@@ -44,6 +53,7 @@ func NewRootCommand(deps Deps) *cobra.Command {
 	root.AddCommand(newAddCommand(deps))
 	root.AddCommand(newListCommand(deps))
 	root.AddCommand(newRmCommand(deps))
+	root.AddCommand(newUseCommand(deps))
 
 	return root
 }
