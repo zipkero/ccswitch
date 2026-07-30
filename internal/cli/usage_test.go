@@ -10,9 +10,10 @@ import (
 // 종료 코드 2로 분류되어야 한다.
 func TestUsageErrors_MapToExitCode2(t *testing.T) {
 	cases := map[string][]string{
-		"add missing name argument":   {"add"},
-		"add unknown flag without --": {"add", "-abc"},
-		"list unexpected argument":    {"list", "extra"},
+		"add missing name argument":       {"add"},
+		"add unknown flag without --":     {"add", "-abc"},
+		"list unexpected argument":        {"list", "extra"},
+		"rm skip-logout has no shorthand": {"rm", "work", "-s"},
 	}
 
 	for name, args := range cases {

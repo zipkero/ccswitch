@@ -26,6 +26,12 @@ var ErrProfileUnusable = errors.New("profile cannot be used")
 // (D8).
 var ErrExecNotFound = errors.New("executable not found")
 
+// ErrClaudeAuthFailed는 Claude Code에 위임한 claude auth 명령이 답을 주지 못했을 때 돌아온다.
+// logout 실패, rm의 정리 실패, list --accounts의 계정 조회 실패가 모두 이 코드를 쓴다 — 세
+// 자리 모두 같은 원인(위임한 명령이 답을 주지 못함)의 다른 발생 지점이기 때문이다
+// (profile-auth D12).
+var ErrClaudeAuthFailed = errors.New("claude auth command did not answer")
+
 // childExitError는 자식 프로세스가 0이 아닌 코드로 끝났다는 사실만 나른다. ccswitch 자신의
 // 실패가 아니므로 이 error가 흐르는 경로는 stderr에 아무것도 덧붙이지 않는다 — Ctrl+C로 세션을
 // 빠져나올 때마다 한 줄이 붙으면 화면이 claude를 직접 실행한 것과 달라진다 (D7).
@@ -66,6 +72,8 @@ func ExitCode(err error) int {
 		return 6
 	case errors.Is(err, ErrExecNotFound):
 		return 7
+	case errors.Is(err, ErrClaudeAuthFailed):
+		return 8
 	case errors.Is(err, profile.ErrStoreCorrupt):
 		return 1
 	default:

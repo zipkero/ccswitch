@@ -52,6 +52,8 @@ func NewRootCommand(deps Deps) *cobra.Command {
 
 	root.AddCommand(newAddCommand(deps))
 	root.AddCommand(newListCommand(deps))
+	root.AddCommand(newLoginCommand(deps))
+	root.AddCommand(newLogoutCommand(deps))
 	root.AddCommand(newRmCommand(deps))
 	root.AddCommand(newUseCommand(deps))
 

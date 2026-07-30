@@ -6,7 +6,7 @@ Claude Code에 위임하는 것. 계정을 프로필에 붙이고 떼는 일을 
 
 ## 상태
 - [x] SPEC
-- [ ] ANALYSIS
+- [x] ANALYSIS
 - [ ] IMPLEMENT
 
 ## 문서
@@ -16,3 +16,5 @@ Claude Code에 위임하는 것. 계정을 프로필에 붙이고 떼는 일을 
 
 ## 작업 히스토리
 - 2026-07-30: SPEC 작성
+- 2026-07-30: ANALYSIS 작성
+- 2026-07-30: IMPLEMENT 체크리스트 작성

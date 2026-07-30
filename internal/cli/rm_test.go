@@ -9,11 +9,14 @@ import (
 	"testing"
 
 	"github.com/zipkero/ccswitch/internal/cli"
+	"github.com/zipkero/ccswitch/internal/launch"
 	"github.com/zipkero/ccswitch/internal/profile"
 )
 
 // runRmCLI는 Stdin·Interactive까지 값으로 채운 Deps로 새 커맨드 트리를 구성해 실행한다.
-// runCommand(list_test.go)는 이 두 필드를 다루지 않으므로 rm 전용으로 따로 둔다.
+// runCommand(list_test.go)는 이 두 필드를 다루지 않으므로 rm 전용으로 따로 둔다. 실행 경계에
+// 닿지 않는 거부 테스트(예약 이름, 미등록 이름, 형식 위반, 손상된 등록 파일)만 이 헬퍼를 쓴다 —
+// Launcher가 nil이어도 그 경로들은 호출하지 않는다.
 func runRmCLI(t *testing.T, layout profile.Layout, stdin io.Reader, interactive bool, args ...string) (stdout, stderr string, err error) {
 	t.Helper()
 	var outBuf, errBuf bytes.Buffer
@@ -29,19 +32,47 @@ func runRmCLI(t *testing.T, layout profile.Layout, stdin io.Reader, interactive 
 	return outBuf.String(), errBuf.String(), err
 }
 
-// (1) --yes로 삭제하면 디렉토리·등록이 모두 사라지고 list에 나타나지 않는다.
+// runRmCLIWithLauncher는 runRmCLI에 실행 경계까지 더한다. 정리 위임(PATH 조회·캡처 실행)에
+// 닿는 rm 테스트가 쓴다 — 삭제 승인 프롬프트보다 PATH 조회가 앞이므로(profile-auth D9),
+// 승인이든 거절이든 이 경로를 지나는 테스트는 모두 Launcher가 필요하다.
+func runRmCLIWithLauncher(t *testing.T, layout profile.Layout, stdin io.Reader, interactive bool, launcher launch.Launcher, args ...string) (stdout, stderr string, err error) {
+	t.Helper()
+	var outBuf, errBuf bytes.Buffer
+	root := cli.NewRootCommand(cli.Deps{
+		Layout:      layout,
+		Stdin:       stdin,
+		Stdout:      &outBuf,
+		Stderr:      &errBuf,
+		Interactive: interactive,
+		Platform:    launch.NewPlatform(),
+		Launcher:    launcher,
+	})
+	root.SetArgs(args)
+	err = root.Execute()
+	return outBuf.String(), errBuf.String(), err
+}
+
+// (1) --yes로 삭제하면 디렉토리·등록이 모두 사라지고 list에 나타나지 않는다. 삭제 전에 정리
+// 위임이 정확히 한 번 일어난다.
 func TestRm_WithYesFlag_RemovesDirectoryAndRegistration(t *testing.T) {
 	layout := newTestLayout(t)
 	if _, _, err := runCommand(t, layout, "add", "work"); err != nil {
 		t.Fatalf("add error = %v", err)
 	}
 
-	_, _, err := runRmCLI(t, layout, nil, false, "rm", "work", "--yes")
+	launcher := &recordingLauncher{
+		path:          fakeExecPath,
+		captureResult: launch.Captured{ExitCode: 0},
+	}
+	_, _, err := runRmCLIWithLauncher(t, layout, nil, false, launcher, "rm", "work", "--yes")
 	if err != nil {
 		t.Fatalf("rm error = %v", err)
 	}
 	if code := cli.ExitCode(err); code != 0 {
 		t.Errorf("ExitCode() = %d, want 0", code)
+	}
+	if len(launcher.captures) != 1 {
+		t.Errorf("got %d captures, want exactly 1", len(launcher.captures))
 	}
 
 	if _, statErr := os.Stat(layout.ProfileDir("work")); !os.IsNotExist(statErr) {
@@ -60,7 +91,8 @@ func TestRm_WithYesFlag_RemovesDirectoryAndRegistration(t *testing.T) {
 }
 
 // (2) 대화형으로 "n"이나 빈 입력을 주면 아무것도 지워지지 않고 종료 코드 0, stderr에 취소
-// 표시가 남는다.
+// 표시가 남는다. 거절은 프롬프트(정리 위임보다 앞) 단계에서 갈리므로 정리 위임 자체가
+// 일어나지 않는다.
 func TestRm_InteractiveDecline_KeepsStateAndExitsZero(t *testing.T) {
 	inputs := map[string]string{
 		"explicit no": "n\n",
@@ -83,7 +115,11 @@ func TestRm_InteractiveDecline_KeepsStateAndExitsZero(t *testing.T) {
 				t.Fatalf("ReadFile() error = %v", err)
 			}
 
-			_, stderr, err := runRmCLI(t, layout, strings.NewReader(input), true, "rm", "work")
+			launcher := &recordingLauncher{
+				path:          fakeExecPath,
+				captureResult: launch.Captured{ExitCode: 0},
+			}
+			_, stderr, err := runRmCLIWithLauncher(t, layout, strings.NewReader(input), true, launcher, "rm", "work")
 			if err != nil {
 				t.Fatalf("rm error = %v", err)
 			}
@@ -92,6 +128,9 @@ func TestRm_InteractiveDecline_KeepsStateAndExitsZero(t *testing.T) {
 			}
 			if !strings.Contains(stderr, "Cancelled") {
 				t.Errorf("stderr = %q, want it to mention cancellation", stderr)
+			}
+			if len(launcher.captures) != 0 {
+				t.Errorf("delegation ran despite decline: captures = %v", launcher.captures)
 			}
 
 			dirAfter, err := os.ReadDir(layout.ProfileDir("work"))
@@ -119,7 +158,11 @@ func TestRm_InteractiveApprove_RemovesState(t *testing.T) {
 		t.Fatalf("add error = %v", err)
 	}
 
-	_, _, err := runRmCLI(t, layout, strings.NewReader("y\n"), true, "rm", "work")
+	launcher := &recordingLauncher{
+		path:          fakeExecPath,
+		captureResult: launch.Captured{ExitCode: 0},
+	}
+	_, _, err := runRmCLIWithLauncher(t, layout, strings.NewReader("y\n"), true, launcher, "rm", "work")
 	if err != nil {
 		t.Fatalf("rm error = %v", err)
 	}
@@ -132,7 +175,7 @@ func TestRm_InteractiveApprove_RemovesState(t *testing.T) {
 }
 
 // (4) 비대화형에서 --yes가 없으면 아무것도 지우지 않고 종료 코드 2, stderr에 생략 플래그
-// 안내가 남는다.
+// 안내가 남는다. 확인은 정리 위임보다 앞서 거부되므로 위임 기록도 남지 않는다.
 func TestRm_NonInteractiveWithoutFlag_FailsAndKeepsState(t *testing.T) {
 	layout := newTestLayout(t)
 	if _, _, err := runCommand(t, layout, "add", "work"); err != nil {
@@ -148,7 +191,11 @@ func TestRm_NonInteractiveWithoutFlag_FailsAndKeepsState(t *testing.T) {
 		t.Fatalf("ReadFile() error = %v", err)
 	}
 
-	_, stderr, err := runRmCLI(t, layout, nil, false, "rm", "work")
+	launcher := &recordingLauncher{
+		path:          fakeExecPath,
+		captureResult: launch.Captured{ExitCode: 0},
+	}
+	_, stderr, err := runRmCLIWithLauncher(t, layout, nil, false, launcher, "rm", "work")
 	if err == nil {
 		t.Fatalf("rm error = nil, want failure")
 	}
@@ -157,6 +204,9 @@ func TestRm_NonInteractiveWithoutFlag_FailsAndKeepsState(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "--yes") {
 		t.Errorf("stderr = %q, want it to mention --yes", stderr)
+	}
+	if len(launcher.captures) != 0 {
+		t.Errorf("delegation ran despite the usage rejection: captures = %v", launcher.captures)
 	}
 
 	dirAfter, err := os.ReadDir(layout.ProfileDir("work"))
@@ -247,7 +297,11 @@ func TestRm_OnlyRemovesTargetProfile_LeavesOthersAndDefaultUntouched(t *testing.
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	if _, stderr, err := runRmCLI(t, layout, nil, false, "rm", "work", "--yes"); err != nil {
+	launcher := &recordingLauncher{
+		path:          fakeExecPath,
+		captureResult: launch.Captured{ExitCode: 0},
+	}
+	if _, stderr, err := runRmCLIWithLauncher(t, layout, nil, false, launcher, "rm", "work", "--yes"); err != nil {
 		t.Fatalf("rm error = %v, stderr = %q", err, stderr)
 	}
 

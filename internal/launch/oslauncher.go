@@ -1,6 +1,7 @@
 package launch
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"os/exec"
@@ -49,4 +50,28 @@ func (OSLauncher) Run(spec Spec) (int, error) {
 		return 0, err
 	}
 	return 0, nil
+}
+
+// Capture는 자식을 띄우고 끝날 때까지 기다린 뒤 표준 출력·표준 오류를 값으로 돌려준다. Run과
+// 달리 부모 콘솔을 넘기지 않고, 표준 입력을 비워 두고, 인터럽트 무시를 걸지 않는다 — 캡처
+// 대상은 화면에 아무것도 남기지 않는 짧은 실행이라 Ctrl+C가 부모·자식을 함께 끝내는 편이
+// 낫다(D2, profile-auth). Dir·SysProcAttr을 채우지 않는 이유는 Run과 같다.
+func (OSLauncher) Capture(spec Spec) (Captured, error) {
+	cmd := exec.Command(spec.Path, spec.Args...)
+	cmd.Env = spec.Env
+	// nil Stdin은 표준 라이브러리가 null 장치를 연결한다 — 무언가를 묻는 자식이 입력을
+	// 기다리며 멈추지 않는다(D2, profile-auth).
+	cmd.Stdin = nil
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return Captured{ExitCode: exitErr.ExitCode(), Stdout: stdout.String(), Stderr: stderr.String()}, nil
+		}
+		return Captured{}, err
+	}
+	return Captured{ExitCode: 0, Stdout: stdout.String(), Stderr: stderr.String()}, nil
 }

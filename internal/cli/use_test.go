@@ -24,8 +24,15 @@ type recordingLauncher struct {
 	path     string
 	exitCode int
 
-	lookups []string
-	specs   []launch.Spec
+	// captureResult·captureErr는 Capture를 부를 때마다 그대로 돌려주는 값이다. 호출마다 다른
+	// 결과가 필요한 테스트(계정 조회 네 행 섞기 등)는 이 대역 대신 목적에 맞는 대역을
+	// 따로 둔다(list_accounts_test.go의 scriptedLauncher).
+	captureResult launch.Captured
+	captureErr    error
+
+	lookups  []string
+	specs    []launch.Spec
+	captures []launch.Spec
 }
 
 func (l *recordingLauncher) Lookup(name string) (string, error) {
@@ -36,6 +43,11 @@ func (l *recordingLauncher) Lookup(name string) (string, error) {
 func (l *recordingLauncher) Run(spec launch.Spec) (int, error) {
 	l.specs = append(l.specs, spec)
 	return l.exitCode, nil
+}
+
+func (l *recordingLauncher) Capture(spec launch.Spec) (launch.Captured, error) {
+	l.captures = append(l.captures, spec)
+	return l.captureResult, l.captureErr
 }
 
 // runUseCLI는 실행 경계와 부모 환경까지 값으로 채운 Deps로 새 커맨드 트리를 구성해 실행한다.

@@ -18,6 +18,10 @@ import (
 const (
 	childRecordEnv = "CCSWITCH_TEST_CHILD_RECORD"
 	childExitEnv   = "CCSWITCH_TEST_CHILD_EXIT"
+	// childStdoutEnv는 자식이 표준 출력에 그대로 낼 내용이다. 비어 있으면 아무것도 내지 않는다
+	// — Capture 왕복 검증(list_accounts_roundtrip_test.go)이 claude auth status가 낼 법한
+	// JSON을 자식의 실제 표준 출력에서 부모가 읽어 오는지 보려면 필요하다(profile-auth D13).
+	childStdoutEnv = "CCSWITCH_TEST_CHILD_STDOUT"
 )
 
 // childExitSetupFailed는 자식이 기록을 남기지 못했을 때 쓰는 코드다. 왕복이 깨졌을 때 "중계가
@@ -50,6 +54,9 @@ func runAsChild(recordPath, requestedCode string, args []string) int {
 		fmt.Fprintln(os.Stderr, "child: write record:", err)
 		return childExitSetupFailed
 	}
+	if stdout := os.Getenv(childStdoutEnv); stdout != "" {
+		fmt.Print(stdout)
+	}
 	code, err := strconv.Atoi(requestedCode)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "child: requested exit code:", err)
@@ -67,6 +74,10 @@ type realRunLauncher struct {
 func (l realRunLauncher) Lookup(string) (string, error) { return l.path, nil }
 
 func (realRunLauncher) Run(spec launch.Spec) (int, error) { return launch.OSLauncher{}.Run(spec) }
+
+func (realRunLauncher) Capture(spec launch.Spec) (launch.Captured, error) {
+	return launch.OSLauncher{}.Capture(spec)
+}
 
 // 실제 프로세스를 한 번 왕복해, 기록용 대역으로는 닿지 않는 OSLauncher 경로에서 환경 주입·인자
 // 전달·종료 코드 중계가 함께 성립하는지 본다 (D16).
