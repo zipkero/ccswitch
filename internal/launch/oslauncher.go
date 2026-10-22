@@ -36,11 +36,16 @@ func (OSLauncher) Run(spec Spec) (int, error) {
 	// 않아 부모 콘솔을 공유한다 — 새 창을 띄우지 않는 동작은 "아무것도 하지 않는 것"으로
 	// 실현되므로, 여기서 무엇을 더하면 그대로 깨진다 (D2).
 
-	// 같은 콘솔에 붙은 프로세스는 Ctrl+C를 함께 받는다. 무시를 걸지 않으면 부모가 먼저 끝나
-	// 자식이 남는다. 대상을 인터럽트 하나로 한정하는 것은, 종료 시그널까지 무시하면 대기 중
+	// 같은 콘솔에 붙은 프로세스는 Ctrl+C를 함께 받는다. 받아서 버리지 않으면 부모가 먼저 끝나
+	// 자식이 남는다. 대상을 인터럽트 하나로 한정하는 것은, 종료 시그널까지 삼키면 대기 중
 	// ccswitch를 정상 수단으로 끝낼 수 없기 때문이다 (D9).
-	signal.Ignore(os.Interrupt)
-	defer signal.Reset(os.Interrupt)
+	//
+	// signal.Ignore를 쓰지 않는다 — Unix에서 무시(SIG_IGN) 상태는 exec를 넘어 자식에게
+	// 그대로 상속되어 claude가 SIGINT를 무시하는 채로 시작한다. Notify로 핸들러를 걸면 exec 시
+	// 기본 동작으로 돌아가므로 자식은 평소처럼 Ctrl+C를 받는다.
+	interrupts := make(chan os.Signal, 1)
+	signal.Notify(interrupts, os.Interrupt)
+	defer signal.Stop(interrupts)
 
 	if err := cmd.Run(); err != nil {
 		var exitErr *exec.ExitError
