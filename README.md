@@ -83,7 +83,7 @@ ccswitch rm work
 |---|---|
 | 자격증명 | `CLAUDE.md` |
 | 세션·대화 기록 | `commands/` `skills/` `agents/` `rules/` |
-| 프로젝트 상태, MCP 설정 | `settings.json`, 설정 디렉토리 루트의 외부 도구 설정 파일 |
+| 프로젝트 상태, MCP 설정 | `settings.json`, `keybindings.json`, 사용자가 복사 목록에 등록한 루트 파일 |
 
 왼쪽은 지금 그렇게 동작한다. 프로필마다 설정 디렉토리가 따로이므로 그 안에 쌓이는 것은 전부
 갈린다.
